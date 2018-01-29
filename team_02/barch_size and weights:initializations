@@ -1,0 +1,134 @@
+import matplotlib.pyplot as plt
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers.convolutional import Conv2D, MaxPooling2D
+from keras.datasets import mnist
+from keras.utils import np_utils
+from sklearn.model_selection import ParameterSampler
+from keras.initializers import glorot_normal, he_normal, Zeros, RandomNormal
+from keras import backend as K
+K.clear_session()
+from keras.utils import to_categorical
+# load data
+(X_train, y_train), (X_test, y_test) = mnist.load_data()
+# reshape to be [samples][width][height][channels]
+X_train = X_train.reshape(X_train.shape[0], 28, 28, 1).astype('float32')
+X_test = X_test.reshape(X_test.shape[0], 28, 28, 1).astype('float32')
+# normalize inputs from 0-255 to 0-1
+X_train = X_train / 255.
+X_test = X_test / 255.
+print(X_train.shape)
+#Encode the labels as one-hot vectors
+y_train = np_utils.to_categorical(y_train)
+y_test = np_utils.to_categorical(y_test)
+num_classes = y_test.shape[1]
+#Create the model
+def create_model():
+    model = Sequential()
+    model.add(Conv2D(32, (5, 5), input_shape=(28, 28, 1), activation='relu'))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.2))
+    model.add(Flatten())
+    model.add(Dense(128,  activation='relu'))
+    model.add(Dense(num_classes, activation='softmax'))
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    return model
+
+# Creating and training the model with different Batch Sizes
+def train_model_batch(model, batchSize):
+    print(y_train.shape)
+    history = model.fit(X_train, y_train, 
+                        validation_data=(X_test, y_test),
+                        epochs=10, batch_size=batchSize, verbose=1)
+    return history
+
+# Creating and training the model with different Weights Initializations
+#  Weights initialization: https://keras.io/initializers/
+def train_model_weights(weightsInit):
+    if('xavier' in initType['Conv2D']):
+        Conv = glorot_normal()
+    elif('random' in initType['Conv2D']):
+        Conv = RandomNormal()
+    elif('zeros' in initType['Conv2D']):
+        Conv = Zeros()
+    else:
+        Conv = he_normal()
+    if('xavier' in initType['Dense']):
+        Denses = glorot_normal()
+    elif('random' in initType['Dense']):
+        Denses = RandomNormal()
+    elif('zeros' in initType['Dense']):
+        Denses = Zeros()
+    else:
+        Denses = he_normal()
+    
+    model = Sequential()
+    model.add(Conv2D(32, (5, 5),  kernel_initializer=Conv, input_shape=(28, 28, 1), activation='relu'))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.2))
+    model.add(Flatten())
+    model.add(Dense(128, kernel_initializer=Denses,  activation='relu'))
+    model.add(Dense(num_classes, kernel_initializer=Denses, activation='softmax'))
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=30, batch_size=batch, verbose=1)
+    return history
+    #Plotting the Accuracy
+def plot_accuracy(history):    
+    plt.plot(history.history['acc'], label='training accuracy')
+    plt.plot(history.history['val_acc'], label='validation accuracy')
+    plt.legend()
+    plt.title("Accuracy")
+    plt.show()
+
+#Plotting the loss
+def plot_loss(history):   
+    plt.plot(history.history['loss'], label='training loss')
+    plt.plot(history.history['val_loss'], label='validation loss')
+    plt.title('Loss (cat. cross entropy)')
+    plt.legend()
+    plt.show()
+#Try diferent values for the hyperparameter BatchSize
+batchSize = [64, 128, 256, 512, 600, 1000, 2000, 3000, 6000]                   
+model = create_model()
+acc=0;
+batch=0;
+val_error=0
+loss=0
+for size in batchSize:
+    history = train_model_batch(model, size)
+    acc_temp = history.history['val_acc']
+    loss_temp = history.history['loss']
+    plot_accuracy(history)
+    plot_loss(history)
+    scores = model.evaluate(X_test, y_test, verbose=1)
+    
+    print("\n Validation Error: %.2f%%" % (100-scores[1]*100))
+    
+    print("\n Now we tried with a batch size = " + str(size) + 
+          "\n LOoss = " + str(loss_temp[9]) + 
+          "\n Accuracy = " + str(acc_temp[9]) +
+          "\n Val_error =" + str(100-scores[1]*100))
+    
+    if (acc_temp[9] > acc):
+        acc = acc_temp[9]
+        loss = loss_temp[9]
+        val_error = (100-scores[1]*100)
+        batch = size
+        
+    print("\n The best parameters are:" +
+          "\n BatchSize = " + str(batch) + 
+          "\n Accuracy = " + str(acc_temp[9]) +
+          "\n Loss = " + str(loss))
+#Try the diferent weights initializations: zeros, xavier, random and he_normal
+weightsInit = {
+    'Conv2D': ['zeros','xavier', 'random', 'he_normal'],
+    'Dense': ['zeros','xavier', 'random', 'he_normal']
+}
+WInits = list(ParameterSampler(weightsInit, n_iter = 16 ))
+for initType in WInits:
+    print ("We use the diferent weights to initialize, Conv2D:" + initType['Conv2D'] + "Denses: " + initType['Dense'])
+    history = train_model_weights(initType)
+    plot_accuracy(history)
+    plot_loss(history)
+    scores = model.evaluate(X_test, y_test, verbose=1)
+    print("Baseline Error: %.2f%%" % (100-scores[1]*100))
